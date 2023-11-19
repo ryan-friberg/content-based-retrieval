@@ -1,0 +1,6 @@
+data/datasets/data
+data/datasets/faces
+data/datasets/lsun1
+data/datasets/lsun2
+*.log
+.DS_Store

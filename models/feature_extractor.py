@@ -26,7 +26,7 @@ class FeatureExtractorViT(nn.Module):
         self.new_shape = (batch_shape[0], n_patches**2, (batch_shape[1]*batch_shape[2]*batch_shape[3]) // n_patches**2)
         self.p_shape   = (batch_shape[2]/n_patches, batch_shape[3]/n_patches)
 
-        # define iamge patching size
+        ### define image patching size
         self.p_size  = self.shape[2] // self.n_patches
 
         ### define the actual transformer model architecture
@@ -35,7 +35,7 @@ class FeatureExtractorViT(nn.Module):
         self.encoder_blocks = nn.Sequential(*attn_layers)
         self.output_layer   = nn.Linear(hidden_size, output_feature_size)
         
-        # define positional embedding, mark it untrainable, and add it to the state_dict
+        ### define positional embedding, mark it untrainable, and add it to the state_dict
         self.pos_embed = nn.Parameter(self.pos_embedding(n_patches ** 2, hidden_size))
         self.pos_embed.requires_grad = False
         self.register_buffer('positional_embedding', self.pos_embed, persistent=False)
@@ -76,17 +76,19 @@ class AttentionEncoder(nn.Module):
         output = []
         for sequence in linear_embed:
             seq_z = []
-            for head in range(self.num_heads):
-                q_map = self.q_map[head]
-                k_map = self.k_map[head]
-                v_map = self.v_map[head]
-                seq = sequence[:, :, head * self.head_dim: (head + 1) * self.head_dim].squeeze(0)
-                q = q_map(seq)
-                k = k_map(seq) 
-                v = v_map(seq)
-                attention = self.softmax(q @ k.T / np.sqrt(self.head_dim))
-                seq_z.append(attention @ v)
+            for seq_channel in sequence:
+                channel_z = []
+                for head in range(self.num_heads):
+                    # seq = seq_channel[:, :, head * self.head_dim: (head + 1) * self.head_dim].squeeze(0)
+                    seq = seq_channel[:, head * self.head_dim: (head + 1) * self.head_dim]
+                    q = self.q_map[head](seq)
+                    k = self.k_map[head](seq) 
+                    v = self.v_map[head](seq)
+                    attention = self.softmax(q @ k.T / np.sqrt(self.head_dim))
+                    channel_z.append(attention @ v)
+                seq_z.append(torch.hstack(channel_z))
             output.append(torch.hstack(seq_z))
+        print(torch.cat([torch.unsqueeze(z, dim=0) for z in output]).shape)
         return torch.cat([torch.unsqueeze(z, dim=0) for z in output])
 
 
@@ -113,8 +115,8 @@ if __name__=='__main__':
     test_file = "../data/datasets/data/0.jpg"
     img = Image.open(test_file)
     img = img.convert('RGB')
-    x = torchvision.transforms.ToTensor()(img)
-    x = torchvision.transforms.Grayscale()(x).unsqueeze(0)
+    x = torchvision.transforms.ToTensor()(img).unsqueeze(0)
+    # x = torchvision.transforms.Grayscale()(x).unsqueeze(0)
     test = FeatureExtractorViT(batch_shape=(1,3,36,36))
     output = test(x)
     print(output.shape)

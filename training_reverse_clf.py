@@ -24,7 +24,7 @@ The steps here are:
     - determines which are in the same "cluster" and which arent
 4. Training: model learns to differentiate between umages fron the same cluster and fron different clusters.
 """
-# Path to your dataset
+# Path to dataset
 dataset_path = "./datasets/galaxies"
 
 # Transformations for image preprocessing

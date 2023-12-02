@@ -3,6 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torchvision.transforms as transforms
+from search.search import cosine_similarity
 from torch.utils.data import DataLoader, random_split
 from data.dataset import GalaxyCBRDataSet, collate_fn
 from models.train import train, test
@@ -21,9 +22,13 @@ parser.add_argument('--model', default='transformer', type=str, help='select whi
 parser.add_argument('--data_dir', default='./data/galaxy_dataset/', type=str, help='location of data files')
 parser.add_argument('--train', action='store_true', type=bool, help='train model')
 parser.add_argument('--test', action='store_true', type=bool, help='location of data files')
-
-# currently unused
 parser.add_argument('--num_augmentations', default=3, type=int, help='number of augmentations during training')
+
+# TODO: implement main.py search functionality
+parser.add_argument('--search', action='store_true', type=bool, help='run search with a query image and model checkpoint\
+                                                                      instead of train/test')
+parser.add_argument('--query_image', default='', type=str, help='search query image filename')
+parser.add_argument('--search_database', default='', type=str, help='directory of search data files')
 
 
 def build_model(arch_name):
@@ -72,6 +77,13 @@ def determine_device(requested_device_name):
     return device
 
 
+def load_checkpoint(model, optimizer, filename='checkpoint.pth.tar'):
+    checkpoint = torch.load(filename)
+    model.load_state_dict(checkpoint['state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer'])
+    return (checkpoint['epoch'] + 1), checkpoint['best_loss']
+
+
 def main():
     args = parser.parse_args()
 
@@ -86,15 +98,12 @@ def main():
     best_loss = np.Inf
     if args.load != '': # model needs to be loaded to the same device it was saved from
         print('===> Loading checkpoint...')
-        checkpoint = torch.load(args.load)
-        model.load_state_dict(checkpoint['model'])
-        start = checkpoint['epoch'] + 1
-        best_loss = checkpoint['loss'] + 1
+        start, best_loss = load_checkpoint(model, optim, args.load)
         print("=> Loaded!")
 
     print("===> Building optimizer...")
     optim = build_optim(args.optim, model, args.lr)
-    criterion = nn.CrossEntropyLoss() # placeholder for custom contrastive loss fn
+    scoring_fn = cosine_similarity
 
     print("===> Building dataset and dataloaders...")
     data_transforms = transforms.ToTensor()
@@ -108,15 +117,28 @@ def main():
     test_loader  = DataLoader(test_dataset,  batch_size=4, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
     val_loader   = DataLoader(val_dataset,   batch_size=4, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
 
-    if (args.train):
-        print("===> Training...")
-        train(model, test_loader)
+    if ((model == None) or (optim == None)):
+        print("Invalid parameters. Please check optimizer and model spelling!")
+        return -1
+
     if (args.test):
         print("===> Testing...")
-        train(model, train_loader, val_loader, optim, criterion, start_epoch=start, num_epochs=args.epochs, 
-              num_augmentations=3, validate_interval=5, best_loss=best_loss)
+        test(model, test_loader, test_dataset, args.num_augmentations, scoring_fn)
+    if (args.train):
+        print("===> Training...")
+        train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=start, 
+              num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=5, best_loss=best_loss)
         print("Training complete!")
 
+        # TODO: build search database using the trained model
+
+    if (args.search):
+        if ((args.query_image == '') or (args.load == '')):
+            print("Search requires both a query image file and a model checkpoint file!")
+            return -1
+        else:
+            # run search
+            pass
 
 if __name__=='__main__':
     main()

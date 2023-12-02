@@ -1,6 +1,8 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 from torchvision import transforms
+from tqdm import tqdm 
 
 '''
 Defines the model-agnostic training and testing processes
@@ -27,7 +29,7 @@ class AddGaussianNoise(object):
         return self.__class__.__name__ + '(mean={0}, std={1})'.format(self.mean, self.std)
 
 
-def generate_positive_pairs(batch, num_augmentations):
+def generate_positive_pairs(batch, indices, num_augmentations):
     # define a set of transformations that do not significantly alter
     # the visual content of the image (retrains visual features, positive associations)
     positive_transform_options = np.array([
@@ -40,94 +42,141 @@ def generate_positive_pairs(batch, num_augmentations):
     ])
     
     positive_pairs = []
-    for i in range(batch.shape[0]):
+    for idx in indices:
         # randomly sample a set of transforms (to get diverse alterations throughout training)
         random_transforms = transforms.Compose(
             np.random.choice(positive_transform_options, size=num_augmentations, replace=False)
         )
 
-        unaltered_image = batch[i]
-        altered_image = random_transforms(unaltered_image)
-        positive_pairs.append((unaltered_image, altered_image))
+        unaltered_image = batch[idx]
+        positive_associated_image = random_transforms(unaltered_image)
+        positive_pairs.append((unaltered_image, positive_associated_image))
     
     return positive_pairs
 
 
-def generate_negative_pairs(batch, num_augmentations):
-    # define a set of transformations that significantly alter or even destroy
-    # the visual content of the image (negative associations)
-
-    # TODO: possibly make it chance to sample any other random image from the dataset
-    # or transform current one if not. This should be viable since all of the galaxies should
-    # all at least be subtly visually different, this could help the model learn more subtle
-    # visual features
+def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
+    # sample a new random image from the dataset and define a set of transformations 
+    # that alter the image a little more drastically to build negative associations
 
     negative_transform_options = np.array([
+        transforms.RandomHorizontalFlip(1.0),
+        transforms.RandomVerticalFlip(1.0),
         transforms.RandomRotation(180),
-        transforms.RandomPerspective(distortion_scale=0.85, p=1.0),
-        transforms.RandomErasing(p=1.0, scale=(0.5, 0.5), ratio=(0.3, 3.3), value='random'),
-        transforms.ColorJitter(brightness=1.0, contrast=1.0, saturation=1.0, hue=1.0),
-        transforms.GaussianBlur(kernel_size=8, sigma=(0.1, 2.0)),
+        transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
+        transforms.RandomErasing(p=1.0, scale=(0.1, 0.1), ratio=(0.3, 3.3), value='random'),
+        transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+        transforms.GaussianBlur(kernel_size=8, sigma=(0.1, 0.2)),
         AddGaussianNoise(0., 2.0)
     ])
 
     negative_pairs = []
-    for i in range(batch.shape[0]):
-        # randomly sample a set of transforms (to get diverse alterations throughout training)
+    for idx in indices:
+        unaltered_image = batch[idx]
+        image_idx = labels[idx]
+    
+        # ensure no duplicate (even though the odds are super low)
+        found = False
+        while not found:
+            neg_idx = np.random.randint(0, len(dataset))
+            if neg_idx != image_idx:
+                negative_associated_image = dataset[neg_idx]
+
         random_transforms = transforms.Compose(
             np.random.choice(negative_transform_options, size=num_augmentations, replace=False)
         )
-
-        unaltered_image = batch[i]
-        altered_image = random_transforms(unaltered_image)
-        negative_pairs.append((unaltered_image, altered_image))
+        negative_associated_image = random_transforms(unaltered_image)
+        
+        negative_pairs.append((unaltered_image, negative_associated_image))
     
     return negative_pairs
 
 
-def prepare_input(pairs):
-    # TODO: pairs will be a list of tuples (img1, img2)
-    # we want something of the form: input_data = torch.cat([img1, img2], dim=0)
+def save_best_model(model, optimizer, epoch, best_loss, filename='best_model.pth.tar'):
+    state = {
+        'epoch': epoch,
+        'state_dict': model.state_dict(),
+        'best_loss': best_loss,
+        'optimizer': optimizer.state_dict(),
+    }
+    torch.save(state, filename)
 
-    # for the labels we are can do 1 and 0 based on the number of pairs seen
-    # target_labels = torch.tensor([1] * len(positive_pairs) + [0] * len(negative_pairs), dtype=torch.float32)
-    pass
+
+def early_stopping(current_loss, best_loss, threshold=0.01):
+    # Stop training if the loss improvement is less than the threshold
+    return current_loss < best_loss - threshold
 
 
-def test(model, test_loader, validation=False):
+def contrastive_loss(output1, output2, target, margin=1.0):
+    euclidean_distance = F.pairwise_distance(output1, output2, keepdim=True)
+    loss_contrastive = torch.mean((1 - target) * torch.pow(euclidean_distance, 2) +
+                                  (target) * torch.pow(torch.clamp(margin - euclidean_distance, min=0.0), 2))
+    return loss_contrastive
+
+
+def test(model, test_loader, test_dataset, num_augmentations, scoring_fn, validation=False):
     # test should likely run inference with query image, and save an image in a designated
     # directory that has the query image and the top-k similar images
 
     # if validation == True, the function is getting called during training
-    # TODO: evaluate the effectiveness of yielding accuracy on augmented pos/neg labels
-    #       if it is unuseful, this function will probably have to either pick a different
-    #       performance metric or just return the loss values
-    pass
+    # TODO: 
+    # - determine if there are any differences for validation runs (ie see if validation bool is necessary)
+    # - figure out some performance metric with respect to the pairwaise labels
+    #       - one option could be: for any image in the batch, augment it and create a "batch" out of the
+    #         remaining images in the batch + the augmented one. The augmented image is the only positive
+    #         label. The accuracy can be determine using the scoring_fn passed from main between each looking 
+    #         for the closest option
+
+    model.eval()
+    total_loss = 0
+    for batch, labels in tqdm(enumerate(test_loader), total=len(test_loader)):
+        # determine which batch elements of the batch are going to be neg/pos
+        batch_indices = torch.randperm(batch.shape[0])
+        split_index   = int(batch.shape[0] * 0.5)
+        pos_indices   = batch_indices[:split_index]
+        neg_indices   = batch_indices[split_index:]
+
+        # for each image in the batch we generate a set of pairs of images
+        positive_pairs = generate_positive_pairs(batch, pos_indices, num_augmentations)
+        negative_pairs = generate_negative_pairs(batch, labels, neg_indices, num_augmentations, test_dataset)
+        pairwise_labels = torch.tensor([1] * len(pos_indices) + [0] * len(neg_indices))
+        test_pairs = np.arrray([positive_pairs + negative_pairs])
+        np.random.shuffle(zip(test_pairs, pairwise_labels))
+
+        output1 = model(torch.cat([pair[0] for pair in test_pairs], dim=0))
+        output2 = model(torch.cat([pair[1] for pair in test_pairs], dim=0))
+        loss = contrastive_loss(output1, output2, pairwise_labels, margin=1.0)
+        total_loss += loss
+    
+    return total_loss / len(test_loader)
 
 
 # this function is the loose placeholder logic
-# TODO: tqdm, checkpointing, validation/early stopping
-def train(model, train_loader, val_loader, optim, criterion, start_epoch=0, num_epochs=10, 
-          num_augmentations=3, validate_interval=5, best_loss=np.Inf):
+def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=0, 
+          num_epochs=10, num_augmentations=3, validate_interval=5, best_loss=np.Inf):
+
     model.train()
     for epoch in range(start_epoch, start_epoch + num_epochs):
-        for batch in train_loader:
+        for batch, labels in tqdm(enumerate(train_loader), total=len(train_loader)):
             optim.zero_grad()
             
-            # TODO: to cut down on training times we may want to set one set of indices
-            # to have a positive pair, and the others to have a negative pair (ie pass the indices
-            # to the respective pair generating function), would change lines 69/43
+            # determine which batch elements of the batch are going to be neg/pos
+            batch_indices = torch.randperm(batch.shape[0])
+            split_index   = int(batch.shape[0] * 0.5)
+            pos_indices   = batch_indices[:split_index]
+            neg_indices   = batch_indices[split_index:]
 
             # for each image in the batch we generate a set of pairs of images
-            positive_pairs = generate_positive_pairs(batch, num_augmentations)
-            negative_pairs = generate_negative_pairs(batch, num_augmentations)
+            positive_pairs = generate_positive_pairs(batch, pos_indices, num_augmentations)
+            negative_pairs = generate_negative_pairs(batch, labels, neg_indices, num_augmentations, train_dataset)
+            pairwise_labels = torch.tensor([1] * len(pos_indices) + [0] * len(neg_indices))
+            train_pairs = np.arrray([positive_pairs + negative_pairs])
+            np.random.shuffle(zip(train_pairs, pairwise_labels))
 
-            training_pairs = torch.cat([positive_pairs, negative_pairs], dim=0)
-            np.random.shuffle(training_pairs)
-            input_data, target_labels = prepare_input(training_pairs)
-            
-            output = model(input_data)
-            loss = criterion(output, target_labels)
+            output1 = model(torch.cat([pair[0] for pair in train_pairs], dim=0))
+            output2 = model(torch.cat([pair[1] for pair in train_pairs], dim=0))
+
+            loss = contrastive_loss(output1, output2, pairwise_labels, margin=1.0)
             loss.backward()
             optim.step()
 
@@ -135,6 +184,9 @@ def train(model, train_loader, val_loader, optim, criterion, start_epoch=0, num_
             current_loss = test(model, val_loader)
 
             if (current_loss < best_loss):
-                # TODO: checkpoint model with best_loss and epoch in the dict
-            # TODO: check for early stopping
-                pass
+                best_loss = current_loss
+                save_best_model(model, optim, epoch, best_loss)
+            
+            if early_stopping(current_loss, best_loss):
+                print(f"Early stopping triggered at epoch {epoch}")
+                break

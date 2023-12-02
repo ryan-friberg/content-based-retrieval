@@ -7,13 +7,16 @@ import os
 from PIL import Image
 import torch
 
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 import torchvision.transforms as transforms
 
 
 '''
 This file defines our custom pytorch Dataset class using the
 Galaxy10 dataset.
+
+"labels" are really indices into the dataset to ensure negative
+samples do not sample the same image during train/test
 
 Datasets used:
 https://astronn.readthedocs.io/en/latest/galaxy10.html
@@ -87,42 +90,8 @@ class GalaxyCBRDataSet(Dataset):
             image_class_files = list(itertools.chain.from_iterable(
                 [glob.glob(image_class_dir + file_type) for file_type in self.supported_file_types]))
             image_files += image_class_files
-            labels += [int(name)] * len(image_class_files)
+        labels = np.arange(0, len(image_files), dtype=int)
         return image_files, labels
-
-
-# a dataset build after feature extraction training to pre-compute the tensor of extracted
-# features from a given dataset. The main purpose of this dataset is to speed up search
-# by removing search-time model inference
-class ExtractedFeaturesDataset(Dataset):
-    def __init__(self, data_dir, model, associated_dataset, extract_features=True):
-        self.data_dir = data_dir
-        self.associated_dataset = associated_dataset
-
-        if (not os.path.exists(data_dir)):
-            os.mkdir(data_dir)
-
-        if extract_features:
-            self.extract_and_save_features(data_dir, model)
-        
-        self.files = self.get_filenames(self.data_dir)
-        self.num_files = len(self.associated_dataset)
-
-    def __getitem__(self, idx):
-        return self.files[idx]
-
-    def __len__(self):
-        return self.num_files
-
-    def extract_and_save_features(data_dir, model):
-        # TODO: once training is finished, this function should be called
-        # it should pre-compute and store the extracted features of each image to speed up search time
-        # torch.save each tensor to file?
-        pass
-
-    def get_filenames(self):
-        # torch.load?
-        pass
 
 
 # simple collation function to be used in the future for the DataLoader
@@ -132,7 +101,3 @@ def collate_fn(batch):
     images = torch.stack([b[0] for b in batch])
     labels = torch.LongTensor([b[1] for b in batch])
     return images, labels
-
-
-def search_dataset(features_dataset, model):
-    pass

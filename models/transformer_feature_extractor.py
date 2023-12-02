@@ -1,8 +1,6 @@
 import numpy as np
-from tqdm import tqdm, trange
 import torch
 import torch.nn as nn
-import torchvision
 
 '''
 This file's purpose is to define the learning-based models used for feature extraction. Example

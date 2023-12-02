@@ -137,7 +137,7 @@ def test(model, test_loader, test_dataset, num_augmentations, scoring_fn):
         for i, pair in enumerate(test_pairs):
             output1 = model(pair[0])
             output2 = model(pair[1])
-            score, loss = contrastive_loss(scoring_fn, output1, output2, pairwise_labels)
+            score, loss = contrastive_loss(scoring_fn, output1, output2, pairwise_labels[i])
             total_loss += loss
             if (score < closest_score):
                 closest_score = score

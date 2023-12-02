@@ -82,6 +82,7 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
             neg_idx = np.random.randint(0, len(dataset))
             if neg_idx != image_idx:
                 negative_associated_image = dataset[neg_idx]
+                found = True
 
         random_transforms = transforms.Compose(
             np.random.choice(negative_transform_options, size=num_augmentations, replace=False)

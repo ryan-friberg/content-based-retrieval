@@ -108,6 +108,22 @@ def main():
     test_loader  = DataLoader(test_dataset,  batch_size=4, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
     val_loader   = DataLoader(val_dataset,   batch_size=4, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
 
+    def compute_all_features(model, dataloader, device):
+        """TODO: do we need to compute all the features beforehand?"""
+        model.eval()
+        all_features = []
+
+        with torch.no_grad():
+            for images, _ in dataloader:
+                images = images.to(device)
+                features = model(images)
+                all_features.append(features.cpu())
+
+        all_features = torch.cat(all_features, dim=0)
+        return all_features
+
+    all_features = compute_all_features(model, test_loader, device)
+
     if (args.train):
         print("===> Training...")
         train(model, test_loader)
@@ -115,6 +131,8 @@ def main():
         print("===> Testing...")
         train(model, train_loader, val_loader, optim, criterion, start_epoch=start, num_epochs=args.epochs, 
               num_augmentations=3, validate_interval=5, best_loss=best_loss)
+        accuracy = test(model, test_loader, all_features, k=5, validation=True)
+        print(f"Validation Accuracy: {accuracy}")
         print("Training complete!")
 
 

@@ -1,4 +1,5 @@
 import numpy as np
+import time
 import torch
 import torch.nn.functional as F
 from torchvision import transforms
@@ -107,56 +108,56 @@ def early_stopping(current_loss, best_loss, threshold=0.01):
     return current_loss < best_loss - threshold
 
 
-def contrastive_loss(output1, output2, target, margin=1.0):
-    euclidean_distance = F.pairwise_distance(output1, output2, keepdim=True)
-    loss_contrastive = torch.mean((1 - target) * torch.pow(euclidean_distance, 2) +
-                                  (target) * torch.pow(torch.clamp(margin - euclidean_distance, min=0.0), 2))
-    return loss_contrastive
+def contrastive_loss(scoring_fn, output1, output2, target_labels, margin=1.0):
+    similarity_score = scoring_fn(output1, output2)
+    loss = torch.mean((1 - target_labels) * torch.pow(similarity_score, 2) +
+                      (target_labels) * torch.pow(torch.clamp(margin - similarity_score, min=0.0), 2))
+    return similarity_score, loss
 
 
-def test(model, test_loader, test_dataset, num_augmentations, scoring_fn, validation=False):
+def test(model, test_loader, test_dataset, num_augmentations, scoring_fn):
     # test should likely run inference with query image, and save an image in a designated
     # directory that has the query image and the top-k similar images
 
-    # if validation == True, the function is getting called during training
-    # TODO: 
-    # - determine if there are any differences for validation runs (ie see if validation bool is necessary)
-    # - figure out some performance metric with respect to the pairwaise labels
-    #       - one option could be: for any image in the batch, augment it and create a "batch" out of the
-    #         remaining images in the batch + the augmented one. The augmented image is the only positive
-    #         label. The accuracy can be determine using the scoring_fn passed from main between each looking 
-    #         for the closest option
-
     model.eval()
     total_loss = 0
+    loose_acc  = 0 # the accuracy is loose because the definition of visual similarity is loose
     for batch, labels in tqdm(enumerate(test_loader), total=len(test_loader)):
-        # determine which batch elements of the batch are going to be neg/pos
-        batch_indices = torch.randperm(batch.shape[0])
-        split_index   = int(batch.shape[0] * 0.5)
-        pos_indices   = batch_indices[:split_index]
-        neg_indices   = batch_indices[split_index:]
-
-        # for each image in the batch we generate a set of pairs of images
-        positive_pairs = generate_positive_pairs(batch, pos_indices, num_augmentations)
-        negative_pairs = generate_negative_pairs(batch, labels, neg_indices, num_augmentations, test_dataset)
-        pairwise_labels = torch.tensor([1] * len(pos_indices) + [0] * len(neg_indices))
-        test_pairs = np.arrray([positive_pairs + negative_pairs])
+        # select the first element of the batch to generate the positive pair
+        query_pair = generate_positive_pairs(batch, [0], num_augmentations)
+        
+        # make a pair of the first batch image with each other image, first pair is positive
+        test_pairs = query_pair + [(batch[0], img) for img in batch[1:]]
+        pairwise_labels = [1] + [0] * (len(test_pairs) - 1)
         np.random.shuffle(zip(test_pairs, pairwise_labels))
 
-        output1 = model(torch.cat([pair[0] for pair in test_pairs], dim=0))
-        output2 = model(torch.cat([pair[1] for pair in test_pairs], dim=0))
-        loss = contrastive_loss(output1, output2, pairwise_labels, margin=1.0)
-        total_loss += loss
+        # get the contrastive loss between the elements in the batch (individually to get sim scores)
+        closest_idx = -1
+        closest_score = np.Inf
+        for i, pair in enumerate(test_pairs):
+            output1 = model(pair[0])
+            output2 = model(pair[1])
+            score, loss = contrastive_loss(scoring_fn, output1, output2, pairwise_labels)
+            total_loss += loss
+            if (score < closest_score):
+                closest_score = score
+                closest_idx = i
+       
+        # if the closest pair is the positive pair, increase the accuracy
+        if (pairwise_labels[closest_idx] == 1):
+            loose_acc += 1
     
-    return total_loss / len(test_loader)
+    return (total_loss / len(test_dataset)), (loose_acc / len(test_loader))
 
 
 # this function is the loose placeholder logic
 def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=0, 
           num_epochs=10, num_augmentations=3, validate_interval=5, best_loss=np.Inf):
 
+    val_losses, val_loose_accs = [], []
     model.train()
     for epoch in range(start_epoch, start_epoch + num_epochs):
+        start = time.time()
         for batch, labels in tqdm(enumerate(train_loader), total=len(train_loader)):
             optim.zero_grad()
             
@@ -176,17 +177,24 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
             output1 = model(torch.cat([pair[0] for pair in train_pairs], dim=0))
             output2 = model(torch.cat([pair[1] for pair in train_pairs], dim=0))
 
-            loss = contrastive_loss(output1, output2, pairwise_labels, margin=1.0)
+            score, loss = contrastive_loss(scoring_fn, output1, output2, pairwise_labels)
             loss.backward()
             optim.step()
 
-        if ((epoch % validate_interval) == 0):
-            current_loss = test(model, val_loader)
+        end = time.time()
+        elapsed_time = end - start
 
-            if (current_loss < best_loss):
-                best_loss = current_loss
+        if ((epoch % validate_interval) == 0):
+            val_loss, val_loose_acc = test(model, val_loader)
+            print("Epoch %d - Runtime: %.1fs - Val Loss: %.3f - Val Loose Acc: %.3f" % (epoch, elapsed_time, val_loss, val_loose_acc))
+
+            val_losses.append(val_loss)
+            val_loose_accs.append(val_loose_accs)
+            if (val_loss < best_loss):
+                best_loss = val_loss
+                print("Saving model!")
                 save_best_model(model, optim, epoch, best_loss)
             
-            if early_stopping(current_loss, best_loss):
+            if early_stopping(val_loss, best_loss):
                 print(f"Early stopping triggered at epoch {epoch}")
                 break

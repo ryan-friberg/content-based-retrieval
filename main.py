@@ -123,7 +123,7 @@ def main():
 
     if (args.test):
         print("===> Testing...")
-        test(model, test_loader, test_dataset, args.num_augmentations, scoring_fn)
+        test(model, test_loader, args.num_augmentations, scoring_fn)
     if (args.train):
         print("===> Training...")
         train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=start, 

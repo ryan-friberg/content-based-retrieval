@@ -11,6 +11,10 @@ def cosine_similarity(features1, features2):
     return F.cosine_similarity(features1, features2, dim=1)
 
 
+def euclidean_distance(features1, features2, keepdim=True):
+    return F.pairwise_distance(features1, features2, keepdim=keepdim)
+
+
 def get_top_k_indices(query_features, all_features, k):
     # Compute similarity scores between query features and all features
     similarities = cosine_similarity(query_features.unsqueeze(0), all_features)

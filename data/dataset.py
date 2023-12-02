@@ -1,102 +1,128 @@
-import datasets
+from astroNN.datasets import load_galaxy10  # this may throw a tensorflow error
 import glob
+import h5py
 import itertools
 import numpy as np
 import os
 from PIL import Image
 import torch
-from torch.utils.data import Dataset
+
+from torch.utils.data import Dataset, DataLoader
+import torchvision.transforms as transforms
 
 
 '''
-This file defines our custom pytorch Dataset class that conglomerates
-and accesses the files downloaded across many datasets. As conten-based
-retrieval can be structured as an unsupervised or self-supervised task,
-we do not need ot create a mapping between images and their respective
-ground truth labels.
+This file defines our custom pytorch Dataset class using the
+Galaxy10 dataset.
 
-Current conglomeration approach:
-Huggingface stores their datasets on the filesystem as a .hf face, so for
-each HF dataset given, we extract and resave each datapoint as its own file
-to avoid needing to load the dataset again on __getitem__. For simplicitly,
-we move each non HF dataset to the same directory as well.
-
-For now, all images are saved as 32x32 RGB to match that of the huggingface
-datasets.
+Datasets used:
+https://astronn.readthedocs.io/en/latest/galaxy10.html
 '''
 
-
-class CBRDataSet(Dataset):
-    def __init__(self, data_dir_list, unified_dir, transforms):
-        self.data_dir_list = data_dir_list
-        self.unified_dir = unified_dir
+# dataset of 10 classes of galaxies, stored in the filesystem as 3x256x256 images in
+# g, r, and z bands (as commonly done with astronomical images)
+class GalaxyCBRDataSet(Dataset):
+    def __init__(self, images_dir, transforms, force_download=False, h5_file=None):
         self.transforms = transforms
+        self.supported_file_types = ['/*.jpg']
+        self.images_dir = images_dir 
+
+        if (not os.path.exists(images_dir)):
+            os.mkdir(images_dir)
+
+        if force_download:
+            self.download_galaxy10_data(h5_file)
         
-        # mainly for if we scrape the web
-        self.valid_file_types = ['.jpg', '.jpeg', '.png']
-        
-        if (len(os.listdir(self.unified_dir)) == 0):
-            print("Pre-processing data!")
-            self.preprocess_datasets()
-        
-        self.image_files = self.get_images()
+        image_files, labels = self.get_image_filenames_with_labels(self.images_dir)
+        self.image_files = np.array(image_files)
+        self.labels = np.array(labels).astype("int")
         self.num_images = len(self.image_files)
 
     def __getitem__(self, idx):
-        img = Image.open(self.image_files[idx])
-        if self.transforms:
-            img = self.transforms(img)
-        return img
+        try:
+            image = Image.open(self.image_files[idx]).convert('RGB')
+            if image.size != (224,224):
+                image = image.resize((224,224))
+            label = self.labels[idx]
+            image = self.transforms(image)
+            return image, label
+        except:
+            return None
 
     def __len__(self):
         return self.num_images 
 
-    # extract, reshape, and combine the images across multiple datasets
-    def preprocess_datasets(self):
-        img_index = 0
-        if (not os.path.exists(self.unified_dir)):
-            os.mkdir(self.unified_dir)
+    def download_galaxy10_data(self, h5_filename=None):
+        if h5_filename:
+            with h5py.File(h5_filename, 'r') as F:
+                images = np.array(F['images'])
+                labels = np.array(F['ans'])
+        else:
+            images, labels = load_galaxy10()
 
-        for (dir, type) in self.data_dir_list:
-            if (type == 'hf'):
-                dataset = datasets.load_from_disk(dir)
-                for img_dict in dataset:
-                    # extract file name information and build new filename
-                    img_name = "%d.jpg" % img_index
-                    img_file = os.path.join(self.unified_dir, img_name)
-                    img = img_dict['image']
-                
-                    # reshape our image/convert to RGB and save
-                    img = img.convert('RGB')
-                    img.save(img_file)
-                    img_index += 1
-            elif (type == 'kaggle'):
-                imgs = os.listdir(dir)
-                for img_file in imgs:
-                    # extract file name information and build new filename
-                    file, type = os.path.splitext(img_file)
-                    name = os.path.join(dir, img_file)
-                    img = Image.open(name)
-                    new_img = str(img_index) + type
-                    new_img_file = os.path.join(self.unified_dir, new_img)
-                    
-                    # reshape our image/convert to RGB and save
-                    img = img.convert('RGB')
-                    img = img.resize((32,32))
-                    img.save(new_img_file)
-                    img_index += 1
+        label_set = np.unique(labels)
+        for unique_label in label_set:
+            label_dir = os.path.join(self.images_dir, str(int(unique_label)))
+            if (not os.path.exists(label_dir)):
+                os.mkdir(label_dir)
 
-    # walk through each file names in the pre-processed dir and collect valid files
-    def get_images(self):
-        images = []
-        files = os.listdir(self.unified_dir)
-        for img_file in files:
-            file, type = os.path.splitext(img_file)
-            if (img_file == ".DS_Store") or (type not in self.valid_file_types):
+            indices = np.where(labels == unique_label)[0]
+            image_idx = 0
+            print("Saving class", str(unique_label), "images...")
+            for idx in indices:
+                file_name = os.path.join(label_dir, str(image_idx) + ".jpg")
+                image = Image.fromarray(images[idx].astype('uint8'))
+                image.save(file_name)
+                image_idx += 1
+
+    def get_image_filenames_with_labels(self, images_dir):
+        image_files = []
+        labels = []
+
+        files = os.listdir(images_dir)
+        for name in files:
+            if name == ".DS_Store":
                 continue
-            file_name = os.path.join(self.unified_dir, img_file)
-            images.append(file_name)
-        return images
+            image_class_dir = os.path.join(images_dir, name)
+            image_class_files = list(itertools.chain.from_iterable(
+                [glob.glob(image_class_dir + file_type) for file_type in self.supported_file_types]))
+            image_files += image_class_files
+            labels += [int(name)] * len(image_class_files)
+        return image_files, labels
+
+
+# a dataset build after feature extraction training to pre-compute the tensor of extracted
+# features from a given dataset. The main purpose of this dataset is to speed up search
+# by removing search-time model inference
+class ExtractedFeaturesDataset(Dataset):
+    def __init__(self, data_dir, model, associated_dataset, extract_features=True):
+        self.data_dir = data_dir
+        self.associated_dataset = associated_dataset
+
+        if (not os.path.exists(data_dir)):
+            os.mkdir(data_dir)
+
+        if extract_features:
+            self.extract_and_save_features(data_dir, model)
+        
+        self.files = self.get_filenames(self.data_dir)
+        self.num_files = len(self.associated_dataset)
+
+    def __getitem__(self, idx):
+        return self.files[idx]
+
+    def __len__(self):
+        return self.num_files
+
+    def extract_and_save_features(data_dir, model):
+        # TODO: once training is finished, this function should be called
+        # it should pre-compute and store the extracted features of each image to speed up search time
+        # torch.save each tensor to file?
+        pass
+
+    def get_filenames(self):
+        # torch.load?
+        pass
 
 
 # simple collation function to be used in the future for the DataLoader
@@ -108,10 +134,5 @@ def collate_fn(batch):
     return images, labels
 
 
-# example build
-# if __name__=='__main__':
-#     ls = [('./datasets/lsun1/train', 'hf'),
-#           ('./datasets/lsun2/train', 'hf'),
-#           ('./datasets/faces/Humans', 'kaggle')]
-#     dir = './datasets/data'
-#     test = CBRDataSet(ls, dir, None)
+def search_dataset(features_dataset, model):
+    pass

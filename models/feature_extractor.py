@@ -14,7 +14,7 @@ import torchvision.models as models
 class VAE(nn.Module):
     def __init__(self):
         super(VAE, self).__init__()
-
+        # Define the encoder
         self.encoder = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
@@ -24,7 +24,7 @@ class VAE(nn.Module):
             nn.Linear(32 * 8 * 8, 128),
             nn.ReLU()
         )
-     
+        # Define the latent space
         self.fc_mu = nn.Linear(128, 64)
         self.fc_logvar = nn.Linear(128, 64)
         # Define the decoder
@@ -70,6 +70,7 @@ class ViTFeatureExtractor(nn.Module):
 class SimpleCNN(nn.Module):
     def __init__(self):
         super(SimpleCNN, self).__init__()
+        # Define the CNN layers
         self.conv1 = nn.Conv2d(in_channels=3, out_channels=16, kernel_size=3, stride=1, padding=1)
         self.conv2 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1)
         self.conv3 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=1, padding=1)

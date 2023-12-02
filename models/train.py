@@ -56,6 +56,12 @@ def generate_positive_pairs(batch, num_augmentations):
 def generate_negative_pairs(batch, num_augmentations):
     # define a set of transformations that significantly alter or even destroy
     # the visual content of the image (negative associations)
+
+    # TODO: possibly make it chance to sample any other random image from the dataset
+    # or transform current one if not. This should be viable since all of the galaxies should
+    # all at least be subtly visually different, this could help the model learn more subtle
+    # visual features
+
     negative_transform_options = np.array([
         transforms.RandomRotation(180),
         transforms.RandomPerspective(distortion_scale=0.85, p=1.0),

@@ -114,16 +114,28 @@ class ExtractedFeaturesDataset(Dataset):
     def __len__(self):
         return self.num_files
 
-    def extract_and_save_features(data_dir, model):
-        # TODO: once training is finished, this function should be called
-        # it should pre-compute and store the extracted features of each image to speed up search time
-        # torch.save each tensor to file?
-        pass
+    def extract_and_save_features(data_dir, model, transforms, save_dir='./data/features'):
+        # TODO: test to check if correct
+        model.eval()
+        os.makedirs(save_dir, exist_ok=True)
 
-    def get_filenames(self):
-        # torch.load?
-        pass
+        for img_file in glob.glob(os.path.join(data_dir, '*.jpg')):  
+            # Load and transform the image
+            img = Image.open(img_file)
+            img_tensor = transforms(img).unsqueeze(0)  
 
+            # Extract features
+            with torch.no_grad():
+                features = model(img_tensor)
+            # Save the features
+            feature_file = os.path.join(save_dir, os.path.basename(img_file) + '.pt')
+            torch.save(features, feature_file)
+
+    def get_filenames(save_dir='./data/features'):
+        """
+        Lists all the features files saved in the specified directory.
+        """
+        return [f for f in glob.glob(os.path.join(save_dir, '*.pt'))]
 
 # simple collation function to be used in the future for the DataLoader
 # (I believe this is the same as the default collate_fn)

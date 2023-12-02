@@ -19,7 +19,8 @@ Datasets used:
 https://astronn.readthedocs.io/en/latest/galaxy10.html
 '''
 
-
+# dataset of 10 classes of galaxies, stored in the filesystem as 3x256x256 images in
+# g, r, and z bands (as commonly done with astronomical images)
 class GalaxyCBRDataSet(Dataset):
     def __init__(self, images_dir, transforms, force_download=False, h5_file=None):
         self.transforms = transforms
@@ -90,6 +91,40 @@ class GalaxyCBRDataSet(Dataset):
         return image_files, labels
 
 
+# a dataset build after feature extraction training to pre-compute the tensor of extracted
+# features from a given dataset. The main purpose of this dataset is to speed up search
+# by removing search-time model inference
+class ExtractedFeaturesDataset(Dataset):
+    def __init__(self, data_dir, model, associated_dataset, extract_features=True):
+        self.data_dir = data_dir
+        self.associated_dataset = associated_dataset
+
+        if (not os.path.exists(data_dir)):
+            os.mkdir(data_dir)
+
+        if extract_features:
+            self.extract_and_save_features(data_dir, model)
+        
+        self.files = self.get_filenames(self.data_dir)
+        self.num_files = len(self.associated_dataset)
+
+    def __getitem__(self, idx):
+        return self.files[idx]
+
+    def __len__(self):
+        return self.num_files
+
+    def extract_and_save_features(data_dir, model):
+        # TODO: once training is finished, this function should be called
+        # it should pre-compute and store the extracted features of each image to speed up search time
+        # torch.save each tensor to file?
+        pass
+
+    def get_filenames(self):
+        # torch.load?
+        pass
+
+
 # simple collation function to be used in the future for the DataLoader
 # (I believe this is the same as the default collate_fn)
 def collate_fn(batch):
@@ -99,11 +134,5 @@ def collate_fn(batch):
     return images, labels
 
 
-# example build
-if __name__=='__main__':
-    dir = './galaxy_dataset/'
-    test = GalaxyCBRDataSet(dir, transforms=transforms.ToTensor(), force_download=False)
-    dataloader = DataLoader(test, batch_size=4)
-    for batch, labels in iter(dataloader):
-        print(batch.shape, labels.shape)
-        # print(x.shape)
+def search_dataset(features_dataset, model):
+    pass

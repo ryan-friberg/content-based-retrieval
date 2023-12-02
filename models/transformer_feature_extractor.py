@@ -10,7 +10,7 @@ architectures include a vision transformer, and a CNN-based variational autoenco
 
 This file may potentially include pre-trained and from-scratch models.
 
-Implementation architecture from: https://arxiv.org/pdf/2010.11929.pdf 
+Implementation based architecture diagram from: https://arxiv.org/pdf/2010.11929.pdf 
 '''
 
 # backward pass is handled by the autograd functionality of pytorch
@@ -122,16 +122,3 @@ class ViTEncoderBlock(nn.Module):
         z = self.layer_norm(z)
         z += self.mlp(z)
         return z
-
-if __name__=='__main__':
-    from PIL import Image 
-    test_file = "../data/galaxy_dataset/1/0.jpg"
-    img = Image.open(test_file)
-    img = img.convert('RGB')
-    x = torchvision.transforms.ToTensor()(img).unsqueeze(0)
-    x = torchvision.transforms.Resize(224)(x)
-
-    # x = torchvision.transforms.Grayscale()(x).unsqueeze(0)
-    test = FeatureExtractorViT(batch_shape=(1,3,224,224))
-    output = test(x)
-    print(output.shape)

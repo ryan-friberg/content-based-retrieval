@@ -94,7 +94,7 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
     return negative_pairs
 
 
-def save_best_model(model, optimizer, epoch, best_loss, filename='best_model.pt'):
+def save_best_model(model, optimizer, epoch, best_loss, filename):
     state = {
         'epoch': epoch,
         'state_dict': model.state_dict(),
@@ -158,7 +158,7 @@ def test(model, test_loader, test_dataset, num_augmentations, scoring_fn):
 
 # this function is the loose placeholder logic
 def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=0, 
-          num_epochs=10, num_augmentations=3, validate_interval=2, best_loss=np.Inf):
+          num_epochs=10, num_augmentations=3, validate_interval=2, best_loss=np.Inf, checkpoint_filename='best_model.pt'):
 
     val_losses, val_loose_accs = [], []
     model.train()
@@ -204,7 +204,7 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
             if (val_loss < best_loss):
                 best_loss = val_loss
                 print("Saving model!")
-                save_best_model(model, optim, epoch, best_loss)
+                save_best_model(model, optim, epoch, best_loss, checkpoint_filename)
             
             if early_stopping(val_loss, best_loss):
                 print(f"Early stopping triggered at epoch {epoch}")

@@ -1,9 +1,9 @@
 import argparse
 import numpy as np
 import torch
-import torch.nn as nn
 import torchvision.transforms as transforms
 from search.search import cosine_similarity
+from search.search_dataset import SearchDataset
 from torch.utils.data import DataLoader, random_split
 from data.dataset import GalaxyCBRDataSet, collate_fn
 from models.train import train, test
@@ -133,10 +133,12 @@ def main():
         print("===> Training...")
         train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=start, 
               num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=5, best_loss=best_loss)
-        print("Training complete!")
+        print("=> Training complete!")
 
-        # TODO: build search database using the trained model
-
+        print("===> Building search dataset...")
+        search_data_dir = "./search/search_data"
+        search_dataset  = SearchDataset(search_data_dir, model, galaxy_dataset, device, extract_features=True)
+        print("=> Search dataset build complete!")
     if (args.search):
         if ((args.query_image == '') or (args.load == '')):
             print("Search requires both a query image file and a model checkpoint file!")

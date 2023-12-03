@@ -14,7 +14,7 @@ Implementation based architecture diagram from: https://arxiv.org/pdf/2010.11929
 # backward pass is handled by the autograd functionality of pytorch
 class FeatureExtractorViT(nn.Module):
     # n_patches is number of patches along a dimension
-    def __init__(self, batch_shape, n_patches=14, hidden_size=128, num_blocks=1, num_heads=4, output_feature_size=256):
+    def __init__(self, batch_shape, n_patches=14, hidden_size=2048, num_blocks=3, num_heads=6, output_feature_size=4098):
         super(FeatureExtractorViT, self).__init__()
         assert (batch_shape[1:] == (3,224,224)) # the econding works only for specific image shape
         
@@ -65,7 +65,7 @@ class FeatureExtractorViT(nn.Module):
 
 
 class MultiHeadAttentionEncoder(nn.Module):
-    def __init__(self, dim, num_heads=3):
+    def __init__(self, dim, num_heads):
         super(MultiHeadAttentionEncoder, self).__init__()
         self.dim = dim
         self.num_heads = num_heads

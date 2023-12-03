@@ -36,7 +36,6 @@ class SearchDataset(Dataset):
 
         for idx in range(len(self.associated_dataset)):
             data, _ = self.associated_dataset[idx]
-            # Assuming data is a tensor. If not, transform it to tensor
 
             # Extract features
             with torch.no_grad():

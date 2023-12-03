@@ -1,5 +1,6 @@
 import os
 from torch.utils.data import Dataset
+import torch
 
 '''
 This file defines a dataset that is built after model training. It essentially serves
@@ -27,12 +28,24 @@ class SearchDataset(Dataset):
     def __len__(self):
         return self.num_files
 
-    def extract_and_save_features(data_dir, model):
+    def extract_and_save_features(self, data_dir, model):
         # TODO: once training is finished, this function should be called
         # it should pre-compute and store the extracted features of each image to speed up search time
         # torch.save each tensor to file?
-        pass
+        model.eval()  # Set the model to evaluation mode
+
+        for idx in range(len(self.associated_dataset)):
+            data, _ = self.associated_dataset[idx]
+            # Assuming data is a tensor. If not, transform it to tensor
+
+            # Extract features
+            with torch.no_grad():
+                features = model(data.unsqueeze(0))  # Add batch dimension if necessary
+
+            # Save the features
+            feature_file = os.path.join(data_dir, f'features_{idx}.pt')
+            torch.save(features, feature_file)
 
     def get_filenames(self):
-        # torch.load?
-        pass
+        filenames = [os.path.join(self.data_dir, f) for f in os.listdir(self.data_dir) if f.endswith('.pt')]
+        return filenames

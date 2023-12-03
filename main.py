@@ -68,15 +68,9 @@ def build_optim(optim_name, model, lr):
 def determine_device(requested_device_name):
     print("===> Determining device...")
     if requested_device_name == 'cuda':
-        print("=> Checking for GPU...")
+        print("=> GPU requested")
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        if device == 'cuda':
-            print("=> GPU found, using GPU...")
-        else:
-            print("=> GPU not found!")
-    else:
-        print("=> Using CPU...")
-        device = 'cpu'
+    print("=> Using device:", device)
     return device
 
 
@@ -93,10 +87,11 @@ def main():
     # build appropriate model
     print('===> Building model...')
     model = build_model(args.model, args.batch_size)
+    total_params = sum(p.numel() for p in model.parameters())
+    print("=> Model parameter count:", total_params)
+
     device = determine_device(args.device)
     model.to(device)
-    total_params = sum(p.numel() for p in model.parameters())
-    print("=> Model parameter cound:", total_params)
 
     # load pre-trained checkpoint, if specified
     start = 0
@@ -130,10 +125,10 @@ def main():
 
     if (args.test):
         print("===> Testing...")
-        test(model, test_loader, args.num_augmentations, scoring_fn)
+        test(model, test_loader, args.num_augmentations, scoring_fn, device)
     if (args.train):
         print("===> Training...")
-        train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=start, 
+        train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=start, 
               num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=5, best_loss=best_loss)
         print("=> Training complete!")
 

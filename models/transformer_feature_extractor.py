@@ -14,7 +14,7 @@ Implementation based architecture diagram from: https://arxiv.org/pdf/2010.11929
 # backward pass is handled by the autograd functionality of pytorch
 class FeatureExtractorViT(nn.Module):
     # n_patches is number of patches along a dimension
-    def __init__(self, batch_shape, n_patches=14, hidden_size=2048, num_blocks=3, num_heads=4, output_feature_size=4098):
+    def __init__(self, batch_shape, n_patches=14, hidden_size=1024, num_blocks=3, num_heads=4, output_feature_size=2048):
         super(FeatureExtractorViT, self).__init__()
         assert (batch_shape[1:] == (3,224,224)) # the econding works only for specific image shape
         
@@ -115,24 +115,3 @@ class ViTEncoderBlock(nn.Module):
         z = self.layer_norm(z)
         z = z + self.mlp(z)
         return z
-
-
-# # example batched- run
-# if __name__=='__main__':
-#     from PIL import Image 
-#     import torchvision
-
-#     test_file1 = "data/galaxy_dataset/1/0.jpg"
-#     test_file2 = "data/galaxy_dataset/1/1.jpg"
-#     test_file3 = "data/galaxy_dataset/1/2.jpg"
-#     test_file4 = "data/galaxy_dataset/1/3.jpg"
-
-#     files = [test_file1, test_file2, test_file3, test_file4]
-
-#     t = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
-#                                        torchvision.transforms.Resize(224)])
-
-#     images = torch.stack([t(Image.open(b)) for b in files])
-#     test = FeatureExtractorViT(batch_shape=(4,3,224,224))
-#     output = test(images)
-#     print(output.shape)

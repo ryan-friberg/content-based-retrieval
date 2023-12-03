@@ -130,7 +130,12 @@ def test(model, test_loader, test_dataset, num_augmentations, scoring_fn):
         # make a pair of the first batch image with each other image, first pair is positive
         test_pairs = query_pair + [(batch[0], img) for img in batch[1:]]
         pairwise_labels = [1] + [0] * (len(test_pairs) - 1)
-        np.random.shuffle(zip(test_pairs, pairwise_labels))
+        
+        # shuffle the elements in the batch
+        batch_data = list(zip(test_pairs, pairwise_labels))
+        np.random.shuffle(batch_data)
+        test_pairs, pairwise_labels = zip(*batch_data)
+        test_pairs, pairwise_labels = list(test_pairs), list(pairwise_labels)
 
         # get the contrastive loss between the elements in the batch (individually to get sim scores)
         closest_idx = -1
@@ -172,8 +177,19 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
             positive_pairs = generate_positive_pairs(batch, pos_indices, num_augmentations)
             negative_pairs = generate_negative_pairs(batch, labels, neg_indices, num_augmentations, train_dataset)
             pairwise_labels = torch.tensor([1] * len(pos_indices) + [0] * len(neg_indices))
-            train_pairs = np.array([positive_pairs + negative_pairs])
-            np.random.shuffle(zip(train_pairs, pairwise_labels))
+            train_pairs = [positive_pairs + negative_pairs]
+
+            print([type(pair[0]) for pair in train_pairs])
+            print([type(pair[1]) for pair in train_pairs])
+
+            # shuffle the elements in the batch
+            batch_data = list(zip(train_pairs, pairwise_labels))
+            np.random.shuffle(batch_data)
+            train_pairs, pairwise_labels = zip(*batch_data)
+            train_pairs, pairwise_labels = list(train_pairs), list(pairwise_labels)
+
+            print([type(pair[0]) for pair in train_pairs])
+            print([type(pair[1]) for pair in train_pairs])
 
             output1 = model(torch.cat([pair[0] for pair in train_pairs], dim=0))
             output2 = model(torch.cat([pair[1] for pair in train_pairs], dim=0))

@@ -57,7 +57,6 @@ class SearchDataset(Dataset):
             img.save(img_file)
             torch.save(feature_tensor, features_file)
 
-
     def get_filenames(self):
         image_files   = []
         tensor_files = []

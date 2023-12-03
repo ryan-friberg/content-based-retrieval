@@ -95,6 +95,8 @@ def main():
     model = build_model(args.model, args.batch_size)
     device = determine_device(args.device)
     model.to(device)
+    total_params = sum(p.numel() for p in model.parameters())
+    print("=> Model parameter cound:", total_params)
 
     # load pre-trained checkpoint, if specified
     start = 0

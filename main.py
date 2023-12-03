@@ -17,7 +17,7 @@ parser.add_argument('--optim', default='adam', type=str, help='training optimize
 parser.add_argument('--num_workers', default=1, type=int, help='number of workers')
 parser.add_argument('--train_split', default=0.8, type=float, help='percentage of dataset to be used for training')
 parser.add_argument('--epochs', default=5, type=int, help='numper of training epochs')
-parser.add_argument('--batch_size', default=4, type=int, help='size of batch')
+parser.add_argument('--batch_size', default=8, type=int, help='size of batch')
 parser.add_argument('--load', default='', type=str, help='model checkpoint path')
 parser.add_argument('--model', default='transformer', type=str, help='select which model architecture')
 parser.add_argument('--data_dir', default='./data/galaxy_dataset/', type=str, help='location of data files')
@@ -121,8 +121,6 @@ def main():
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,  num_workers=args.num_workers, collate_fn=collate_fn)
     test_loader  = DataLoader(test_dataset,  batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
     val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
-
-    
 
     if ((model == None) or (optim == None)):
         print("Invalid parameters. Please check optimizer and model spelling!")

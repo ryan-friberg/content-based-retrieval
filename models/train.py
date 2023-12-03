@@ -158,7 +158,7 @@ def test(model, test_loader, test_dataset, num_augmentations, scoring_fn):
 
 # this function is the loose placeholder logic
 def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=0, 
-          num_epochs=10, num_augmentations=3, validate_interval=5, best_loss=np.Inf):
+          num_epochs=10, num_augmentations=3, validate_interval=2, best_loss=np.Inf):
 
     val_losses, val_loose_accs = [], []
     model.train()
@@ -196,7 +196,7 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
         elapsed_time = end - start
 
         if ((epoch % validate_interval) == 0):
-            val_loss, val_loose_acc = test(model, val_loader)
+            val_loss, val_loose_acc = test(model, val_loader, val_dataset, num_augmentations, scoring_fn)
             print("Epoch %d - Runtime: %.1fs - Val Loss: %.3f - Val Loose Acc: %.3f" % (epoch, elapsed_time, val_loss, val_loose_acc))
 
             val_losses.append(val_loss)

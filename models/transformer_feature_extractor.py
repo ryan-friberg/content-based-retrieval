@@ -115,24 +115,3 @@ class ViTEncoderBlock(nn.Module):
         z = self.layer_norm(z)
         z = z + self.mlp(z)
         return z
-    
-
-# # example batched- run
-# if __name__=='__main__':
-#     from PIL import Image 
-#     import torchvision
-
-#     test_file1 = "data/galaxy_dataset/1/0.jpg"
-#     test_file2 = "data/galaxy_dataset/1/1.jpg"
-#     test_file3 = "data/galaxy_dataset/1/2.jpg"
-#     test_file4 = "data/galaxy_dataset/1/3.jpg"
-    
-#     files = [test_file1, test_file2, test_file3, test_file4]
-
-#     t = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
-#                                        torchvision.transforms.Resize(224)])
-
-#     images = torch.stack([t(Image.open(b)) for b in files])
-#     test = FeatureExtractorViT(batch_shape=(4,3,224,224))
-#     output = test(images)
-#     print(output.shape)

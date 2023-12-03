@@ -67,7 +67,7 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
         transforms.RandomPerspective(distortion_scale=0.1, p=1.0),
         transforms.RandomErasing(p=1.0, scale=(0.1, 0.1), ratio=(0.3, 3.3), value='random'),
         transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
-        transforms.GaussianBlur(kernel_size=8, sigma=(0.1, 0.2)),
+        transforms.GaussianBlur(kernel_size=5, sigma=(0.1, 0.2)),
         AddGaussianNoise(0., 2.0)
     ])
 
@@ -94,7 +94,7 @@ def generate_negative_pairs(batch, labels, indices, num_augmentations, dataset):
     return negative_pairs
 
 
-def save_best_model(model, optimizer, epoch, best_loss, filename='best_model.pth.tar'):
+def save_best_model(model, optimizer, epoch, best_loss, filename='best_model.pt'):
     state = {
         'epoch': epoch,
         'state_dict': model.state_dict(),
@@ -123,7 +123,7 @@ def test(model, test_loader, test_dataset, num_augmentations, scoring_fn):
     model.eval()
     total_loss = 0
     loose_acc  = 0 # the accuracy is loose because the definition of visual similarity is loose
-    for batch, labels in tqdm(enumerate(test_loader), total=len(test_loader)):
+    for batch, labels in tqdm(test_loader, total=len(test_loader)):
         # select the first element of the batch to generate the positive pair
         query_pair = generate_positive_pairs(batch, [0], num_augmentations)
         
@@ -159,7 +159,7 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
     model.train()
     for epoch in range(start_epoch, start_epoch + num_epochs):
         start = time.time()
-        for batch, labels in tqdm(enumerate(train_loader), total=len(train_loader)):
+        for batch, labels in tqdm(train_loader, total=len(train_loader)):            
             optim.zero_grad()
             
             # determine which batch elements of the batch are going to be neg/pos
@@ -172,7 +172,7 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
             positive_pairs = generate_positive_pairs(batch, pos_indices, num_augmentations)
             negative_pairs = generate_negative_pairs(batch, labels, neg_indices, num_augmentations, train_dataset)
             pairwise_labels = torch.tensor([1] * len(pos_indices) + [0] * len(neg_indices))
-            train_pairs = np.arrray([positive_pairs + negative_pairs])
+            train_pairs = np.array([positive_pairs + negative_pairs])
             np.random.shuffle(zip(train_pairs, pairwise_labels))
 
             output1 = model(torch.cat([pair[0] for pair in train_pairs], dim=0))

@@ -1,4 +1,4 @@
-from astroNN.datasets import load_galaxy10  # this may throw a tensorflow error
+#   # this may throw a tensorflow error
 import glob
 import h5py
 import itertools
@@ -55,12 +55,15 @@ class GalaxyCBRDataSet(Dataset):
     def __len__(self):
         return self.num_images 
 
-    def download_galaxy10_data(self, h5_filename=None):
+    def download_galaxy10_data(self, h5_filename):
         if h5_filename:
             with h5py.File(h5_filename, 'r') as F:
                 images = np.array(F['images'])
                 labels = np.array(F['ans'])
         else:
+            # awkwardly put this here to avoid repeat tf cuda warnings
+            from astroNN.datasets import load_galaxy10
+
             images, labels = load_galaxy10()
 
         label_set = np.unique(labels)

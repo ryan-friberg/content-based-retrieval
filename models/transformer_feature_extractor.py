@@ -74,7 +74,6 @@ class MultiHeadAttentionEncoder(nn.Module):
         self.dim = dim
         self.num_heads = num_heads
         self.head_dim = int(dim // num_heads)
-        print("mha", dim, num_heads, self.head_dim)
 
         # create the query, key, value layers (each list is the same length the entries at index i represent attn head i)
         self.multihead_q = nn.ModuleList([nn.Linear(self.head_dim, self.head_dim) for q in range(self.num_heads)])

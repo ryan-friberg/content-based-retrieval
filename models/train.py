@@ -110,7 +110,7 @@ def early_stopping(current_loss, best_loss, threshold=0.01):
 
 
 def contrastive_loss(scoring_fn, output1, output2, target_labels, margin=1.0):
-    similarity_score = scoring_fn(output1, output2)
+    similarity_score = scoring_fn(output1, output2).mean(dim=1)
     loss = torch.mean((1 - target_labels) * torch.pow(similarity_score, 2) +
                       (target_labels) * torch.pow(torch.clamp(margin - similarity_score, min=0.0), 2))
     return similarity_score, loss
@@ -135,14 +135,14 @@ def test(model, test_loader, test_dataset, num_augmentations, scoring_fn):
         batch_data = list(zip(test_pairs, pairwise_labels))
         np.random.shuffle(batch_data)
         test_pairs, pairwise_labels = zip(*batch_data)
-        test_pairs, pairwise_labels = list(test_pairs), list(pairwise_labels)
+        test_pairs, pairwise_labels = list(test_pairs), torch.Tensor(list(pairwise_labels))
 
         # get the contrastive loss between the elements in the batch (individually to get sim scores)
         closest_idx = -1
         closest_score = np.Inf
         for i, pair in enumerate(test_pairs):
-            output1 = model(pair[0])
-            output2 = model(pair[1])
+            output1 = model(pair[0].unsqueeze(0))
+            output2 = model(pair[1].unsqueeze(0))
             score, loss = contrastive_loss(scoring_fn, output1, output2, pairwise_labels[i])
             total_loss += loss
             if (score < closest_score):
@@ -177,22 +177,16 @@ def train(model, train_loader, val_loader, train_dataset, val_dataset, optim, sc
             positive_pairs = generate_positive_pairs(batch, pos_indices, num_augmentations)
             negative_pairs = generate_negative_pairs(batch, labels, neg_indices, num_augmentations, train_dataset)
             pairwise_labels = torch.tensor([1] * len(pos_indices) + [0] * len(neg_indices))
-            train_pairs = [positive_pairs + negative_pairs]
-
-            print([type(pair[0]) for pair in train_pairs])
-            print([type(pair[1]) for pair in train_pairs])
+            train_pairs = positive_pairs + negative_pairs
 
             # shuffle the elements in the batch
             batch_data = list(zip(train_pairs, pairwise_labels))
             np.random.shuffle(batch_data)
             train_pairs, pairwise_labels = zip(*batch_data)
-            train_pairs, pairwise_labels = list(train_pairs), list(pairwise_labels)
+            train_pairs, pairwise_labels = list(train_pairs), torch.Tensor(list(pairwise_labels))
 
-            print([type(pair[0]) for pair in train_pairs])
-            print([type(pair[1]) for pair in train_pairs])
-
-            output1 = model(torch.cat([pair[0] for pair in train_pairs], dim=0))
-            output2 = model(torch.cat([pair[1] for pair in train_pairs], dim=0))
+            output1 = model(torch.cat([pair[0].unsqueeze(0) for pair in train_pairs], dim=0))
+            output2 = model(torch.cat([pair[1].unsqueeze(0) for pair in train_pairs], dim=0))
 
             score, loss = contrastive_loss(scoring_fn, output1, output2, pairwise_labels)
             loss.backward()

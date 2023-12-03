@@ -30,7 +30,7 @@ class FeatureExtractorViT(nn.Module):
         self.p_size  = self.shape[2] // self.n_patches
 
         ### define the actual transformer model architecture
-        self.linear         = nn.Linear(int(batch_shape[0] * self.p_shape[0] * self.p_shape[1]), hidden_size)
+        self.linear         = nn.Linear(int(batch_shape[1] * self.p_shape[0]**2), hidden_size)
         attn_layers         = [ViTEncoderBlock(hidden_size, num_heads) for _ in range(num_blocks)]
         self.encoder_blocks = nn.Sequential(*attn_layers)
         self.output_layer   = nn.Linear(hidden_size, output_feature_size)
@@ -49,20 +49,16 @@ class FeatureExtractorViT(nn.Module):
         return embeddings
 
     def forward(self, batch):
-        # expected shape: batch_size x num_channels x height x width
-        # treat each channel as unique image within the batch
-        batch = batch.view(-1, 1, batch.size(2), batch.size(3))
-
         # unfold the images in the batch into tensors
         # first reshape the patches to have shape (batch_size, num_patches, channels, patch_size, patch_size)
-        # then reshape to (batch_size*3, num_patches_per_image, num_elements_in_patch)
+        # then reshape to (batch_size, num_patches_per_image, num_channels * num_elements_in_patch)
         patches = batch.unfold(2, self.p_size, self.p_size).unfold(3, self.p_size, self.p_size)
         patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous().view(batch.size(0), -1, batch.size(1), self.p_size, self.p_size)
-        patches = patches.view(batch.size(0), -1, self.p_size * self.p_size)
+        patches = patches.view(batch.size(0), -1, batch.shape[1] * self.p_size * self.p_size)
 
         z = self.linear(patches)
         pos_embed = self.pos_embed.repeat(batch.shape[0], 1, 1)
-        z += pos_embed
+        z = z + pos_embed
         z = self.encoder_blocks(z)
         z = self.output_layer(z)
         return z
@@ -117,5 +113,26 @@ class ViTEncoderBlock(nn.Module):
     def forward(self, x):
         z = x + self.attention(x)
         z = self.layer_norm(z)
-        z += self.mlp(z)
+        z = z + self.mlp(z)
         return z
+    
+
+# # example batched- run
+# if __name__=='__main__':
+#     from PIL import Image 
+#     import torchvision
+
+#     test_file1 = "data/galaxy_dataset/1/0.jpg"
+#     test_file2 = "data/galaxy_dataset/1/1.jpg"
+#     test_file3 = "data/galaxy_dataset/1/2.jpg"
+#     test_file4 = "data/galaxy_dataset/1/3.jpg"
+    
+#     files = [test_file1, test_file2, test_file3, test_file4]
+
+#     t = torchvision.transforms.Compose([torchvision.transforms.ToTensor(),
+#                                        torchvision.transforms.Resize(224)])
+
+#     images = torch.stack([t(Image.open(b)) for b in files])
+#     test = FeatureExtractorViT(batch_shape=(4,3,224,224))
+#     output = test(images)
+#     print(output.shape)

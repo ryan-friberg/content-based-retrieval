@@ -1,9 +1,9 @@
 import argparse
 import numpy as np
 import torch
-import torch.nn as nn
 import torchvision.transforms as transforms
 from search.search import cosine_similarity
+from search.search_dataset import SearchDataset
 from torch.utils.data import DataLoader, random_split
 from data.dataset import GalaxyCBRDataSet, collate_fn
 from models.train import train, test
@@ -17,25 +17,27 @@ parser.add_argument('--optim', default='adam', type=str, help='training optimize
 parser.add_argument('--num_workers', default=1, type=int, help='number of workers')
 parser.add_argument('--train_split', default=0.8, type=float, help='percentage of dataset to be used for training')
 parser.add_argument('--epochs', default=5, type=int, help='numper of training epochs')
+parser.add_argument('--batch_size', default=8, type=int, help='size of batch')
 parser.add_argument('--load', default='', type=str, help='model checkpoint path')
 parser.add_argument('--model', default='transformer', type=str, help='select which model architecture')
 parser.add_argument('--data_dir', default='./data/galaxy_dataset/', type=str, help='location of data files')
-parser.add_argument('--train', action='store_true', type=bool, help='train model')
-parser.add_argument('--test', action='store_true', type=bool, help='location of data files')
+parser.add_argument('--train', action='store_true', help='train model')
+parser.add_argument('--test', action='store_true', help='location of data files')
+parser.add_argument('--force_download', action='store_true', help='location of data files')
 parser.add_argument('--num_augmentations', default=3, type=int, help='number of augmentations during training')
 
 # TODO: implement main.py search functionality
-parser.add_argument('--search', action='store_true', type=bool, help='run search with a query image and model checkpoint\
+parser.add_argument('--search', action='store_true', help='run search with a query image and model checkpoint\
                                                                       instead of train/test')
 parser.add_argument('--query_image', default='', type=str, help='search query image filename')
 parser.add_argument('--search_database', default='', type=str, help='directory of search data files')
 
 
-def build_model(arch_name):
+def build_model(arch_name, batch_size=None):
     model = None
     if (arch_name == 'transformer'):
         print("=> Transformer")
-        model = FeatureExtractorViT()
+        model = FeatureExtractorViT((batch_size, 3, 224, 224))
     elif (arch_name == 'cnn'):
         print("=> CNN")
         model = None
@@ -64,16 +66,11 @@ def build_optim(optim_name, model, lr):
 
 
 def determine_device(requested_device_name):
+    print("===> Determining device...")
     if requested_device_name == 'cuda':
-        print("Checking for GPU...")
+        print("=> GPU requested")
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
-        if device == 'cuda':
-            print("GPU found, using GPU...")
-        else:
-            print("GPU not found!")
-    else:
-        print("Using CPU...")
-        device = 'cpu'
+    print("=> Using device:", device)
     return device
 
 
@@ -89,7 +86,10 @@ def main():
 
     # build appropriate model
     print('===> Building model...')
-    model = build_model(args.model)
+    model = build_model(args.model, args.batch_size)
+    total_params = sum(p.numel() for p in model.parameters())
+    print("=> Model parameter count:", total_params)
+
     device = determine_device(args.device)
     model.to(device)
 
@@ -107,15 +107,17 @@ def main():
 
     print("===> Building dataset and dataloaders...")
     data_transforms = transforms.ToTensor()
-    galaxy_dataset = GalaxyCBRDataSet(args.data_dir, data_transforms)
+    galaxy_dataset = GalaxyCBRDataSet(args.data_dir, data_transforms, force_download=args.force_download)
 
     train_size = int(args.train_split * len(galaxy_dataset))
-    test_val_size = (len(galaxy_dataset) - train_size) / 2
-    train_dataset, test_dataset, val_dataset = random_split(galaxy_dataset,[train_size, test_val_size, test_val_size])
-    
-    train_loader = DataLoader(train_dataset, batch_size=4, shuffle=True,  num_workers=args.num_workers, collate_fn=collate_fn)
-    test_loader  = DataLoader(test_dataset,  batch_size=4, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
-    val_loader   = DataLoader(val_dataset,   batch_size=4, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
+    test_size  = int((len(galaxy_dataset) - train_size) / 2)
+    val_size   = (len(galaxy_dataset) - train_size - test_size)
+    print("=> train size: %d, test size: %d, val_size: %d" % (train_size, test_size, val_size))
+
+    train_dataset, test_dataset, val_dataset = random_split(galaxy_dataset,[train_size, test_size, val_size])
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,  num_workers=args.num_workers, collate_fn=collate_fn)
+    test_loader  = DataLoader(test_dataset,  batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
+    val_loader   = DataLoader(val_dataset,   batch_size=args.batch_size, shuffle=False, num_workers=args.num_workers, collate_fn=collate_fn)
 
     if ((model == None) or (optim == None)):
         print("Invalid parameters. Please check optimizer and model spelling!")
@@ -123,15 +125,17 @@ def main():
 
     if (args.test):
         print("===> Testing...")
-        test(model, test_loader, args.num_augmentations, scoring_fn)
+        test(model, test_loader, args.num_augmentations, scoring_fn, device)
     if (args.train):
         print("===> Training...")
-        train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, start_epoch=start, 
+        train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=start, 
               num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=5, best_loss=best_loss)
-        print("Training complete!")
+        print("=> Training complete!")
 
-        # TODO: build search database using the trained model
-
+        print("===> Building search dataset...")
+        search_data_dir = "./search/search_data"
+        search_dataset  = SearchDataset(search_data_dir, model, galaxy_dataset, device, extract_features=True)
+        print("=> Search dataset build complete!")
     if (args.search):
         if ((args.query_image == '') or (args.load == '')):
             print("Search requires both a query image file and a model checkpoint file!")

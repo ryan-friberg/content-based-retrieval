@@ -14,7 +14,7 @@ Implementation based architecture diagram from: https://arxiv.org/pdf/2010.11929
 # backward pass is handled by the autograd functionality of pytorch
 class FeatureExtractorViT(nn.Module):
     # n_patches is number of patches along a dimension
-    def __init__(self, batch_shape, n_patches=14, hidden_size=128, num_blocks=1, num_heads=4, output_feature_size=256):
+    def __init__(self, batch_shape, n_patches=14, hidden_size=1024, num_blocks=3, num_heads=4, output_feature_size=2048):
         super(FeatureExtractorViT, self).__init__()
         assert (batch_shape[1:] == (3,224,224)) # the econding works only for specific image shape
         
@@ -30,7 +30,7 @@ class FeatureExtractorViT(nn.Module):
         self.p_size  = self.shape[2] // self.n_patches
 
         ### define the actual transformer model architecture
-        self.linear         = nn.Linear(int(batch_shape[0] * self.p_shape[0] * self.p_shape[1]), hidden_size)
+        self.linear         = nn.Linear(int(batch_shape[1] * self.p_shape[0]**2), hidden_size)
         attn_layers         = [ViTEncoderBlock(hidden_size, num_heads) for _ in range(num_blocks)]
         self.encoder_blocks = nn.Sequential(*attn_layers)
         self.output_layer   = nn.Linear(hidden_size, output_feature_size)
@@ -49,32 +49,27 @@ class FeatureExtractorViT(nn.Module):
         return embeddings
 
     def forward(self, batch):
-        # expected shape: batch_size x num_channels x height x width
-        # treat each channel as unique image within the batch
-        batch = batch.view(-1, 1, batch.size(2), batch.size(3))
-
         # unfold the images in the batch into tensors
         # first reshape the patches to have shape (batch_size, num_patches, channels, patch_size, patch_size)
-        # then reshape to (batch_size*3, num_patches_per_image, num_elements_in_patch)
+        # then reshape to (batch_size, num_patches_per_image, num_channels * num_elements_in_patch)
         patches = batch.unfold(2, self.p_size, self.p_size).unfold(3, self.p_size, self.p_size)
         patches = patches.permute(0, 2, 3, 1, 4, 5).contiguous().view(batch.size(0), -1, batch.size(1), self.p_size, self.p_size)
-        patches = patches.view(batch.size(0), -1, self.p_size * self.p_size)
+        patches = patches.view(batch.size(0), -1, batch.shape[1] * self.p_size * self.p_size)
 
         z = self.linear(patches)
         pos_embed = self.pos_embed.repeat(batch.shape[0], 1, 1)
-        z += pos_embed
+        z = z + pos_embed
         z = self.encoder_blocks(z)
         z = self.output_layer(z)
         return z
 
 
 class MultiHeadAttentionEncoder(nn.Module):
-    def __init__(self, dim, num_heads=3):
+    def __init__(self, dim, num_heads):
         super(MultiHeadAttentionEncoder, self).__init__()
         self.dim = dim
         self.num_heads = num_heads
         self.head_dim = int(dim // num_heads)
-        print("mha", dim, num_heads, self.head_dim)
 
         # create the query, key, value layers (each list is the same length the entries at index i represent attn head i)
         self.multihead_q = nn.ModuleList([nn.Linear(self.head_dim, self.head_dim) for q in range(self.num_heads)])
@@ -118,5 +113,5 @@ class ViTEncoderBlock(nn.Module):
     def forward(self, x):
         z = x + self.attention(x)
         z = self.layer_norm(z)
-        z += self.mlp(z)
+        z = z + self.mlp(z)
         return z

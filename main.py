@@ -22,8 +22,9 @@ parser.add_argument('--load', default='', type=str, help='model checkpoint path'
 parser.add_argument('--model', default='transformer', type=str, help='select which model architecture')
 parser.add_argument('--data_dir', default='./data/galaxy_dataset/', type=str, help='location of data files')
 parser.add_argument('--train', action='store_true', help='train model')
-parser.add_argument('--test', action='store_true', help='location of data files')
-parser.add_argument('--force_download', action='store_true', help='location of data files')
+parser.add_argument('--test', action='store_true', help='test model')
+parser.add_argument('--force_download', action='store_true', help='rebuild dataset filesytem')
+parser.add_argument('--h5_file', default='', type=str, help='location of data source file')
 parser.add_argument('--num_augmentations', default=3, type=int, help='number of augmentations during training')
 
 # TODO: implement main.py search functionality
@@ -110,7 +111,7 @@ def main():
 
     print("===> Building dataset and dataloaders...")
     data_transforms = transforms.ToTensor()
-    galaxy_dataset = GalaxyCBRDataSet(args.data_dir, data_transforms, force_download=args.force_download)
+    galaxy_dataset = GalaxyCBRDataSet(args.data_dir, data_transforms, force_download=args.force_download, h5_file=args.h5_file)
 
     train_size = int(args.train_split * len(galaxy_dataset))
     test_size  = int((len(galaxy_dataset) - train_size) / 2)

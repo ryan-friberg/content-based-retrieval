@@ -25,7 +25,7 @@ https://astronn.readthedocs.io/en/latest/galaxy10.html
 # dataset of 10 classes of galaxies, stored in the filesystem as 3x256x256 images in
 # g, r, and z bands (as commonly done with astronomical images)
 class GalaxyCBRDataSet(Dataset):
-    def __init__(self, images_dir, transforms, force_download=False, h5_file=None):
+    def __init__(self, images_dir, transforms, force_download=False, h5_file=''):
         self.transforms = transforms
         self.supported_file_types = ['/*.jpg']
         self.images_dir = images_dir 
@@ -56,7 +56,7 @@ class GalaxyCBRDataSet(Dataset):
         return self.num_images 
 
     def download_galaxy10_data(self, h5_filename):
-        if h5_filename:
+        if (h5_filename != ''):
             with h5py.File(h5_filename, 'r') as F:
                 images = np.array(F['images'])
                 labels = np.array(F['ans'])

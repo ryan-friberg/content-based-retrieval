@@ -35,13 +35,16 @@ parser.add_argument('--search_database', default='', type=str, help='directory o
 
 def build_model(arch_name, batch_size=None):
     model = None
+    checkpoint_path = None
     if (arch_name == 'transformer'):
         print("=> Transformer")
         model = FeatureExtractorViT((batch_size, 3, 224, 224))
+        checkpoint_path = 'best_transformer.pt'
     elif (arch_name == 'cnn'):
         print("=> CNN")
         model = None
-    return model
+        checkpoint_path = 'best_cnn.pt'
+    return model, checkpoint_path
 
 
 def build_optim(optim_name, model, lr):
@@ -86,12 +89,16 @@ def main():
 
     # build appropriate model
     print('===> Building model...')
-    model = build_model(args.model, args.batch_size)
+    model, checkpoint_path = build_model(args.model, args.batch_size)
     total_params = sum(p.numel() for p in model.parameters())
     print("=> Model parameter count:", total_params)
 
     device = determine_device(args.device)
     model.to(device)
+
+    print("===> Building optimizer...")
+    optim = build_optim(args.optim, model, args.lr)
+    scoring_fn = cosine_similarity
 
     # load pre-trained checkpoint, if specified
     start = 0
@@ -100,10 +107,6 @@ def main():
         print('===> Loading checkpoint...')
         start, best_loss = load_checkpoint(model, optim, args.load)
         print("=> Loaded!")
-
-    print("===> Building optimizer...")
-    optim = build_optim(args.optim, model, args.lr)
-    scoring_fn = cosine_similarity
 
     print("===> Building dataset and dataloaders...")
     data_transforms = transforms.ToTensor()
@@ -128,8 +131,9 @@ def main():
         test(model, test_loader, args.num_augmentations, scoring_fn, device)
     if (args.train):
         print("===> Training...")
-        train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=start, 
-              num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=5, best_loss=best_loss)
+        # train(model, train_loader, val_loader, train_dataset, val_dataset, optim, scoring_fn, device, start_epoch=start, 
+        #       num_epochs=args.epochs, num_augmentations=args.num_augmentations, validate_interval=5, best_loss=best_loss,
+        #       checkpoint_filename=args.checkpoint_path)
         print("=> Training complete!")
 
         print("===> Building search dataset...")
